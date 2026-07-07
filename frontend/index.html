@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AURA // Premium AI Search Studio</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons via Lucide CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Top Progress Loader for background compilation tasks -->
+    <div id="global-loader-bar" class="global-loader-bar"></div>
+
+    <!-- Toast Notifications container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Background glowing visual effects -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <!-- TOP NAVIGATION BAR -->
+    <header class="app-top-nav">
+        <div class="top-nav-left">
+            <div class="brand">
+                <div class="brand-logo">
+                    <i data-lucide="play" class="logo-icon"></i>
+                </div>
+                <span class="brand-name">AURA</span>
+            </div>
+            <div class="workspace-pill">
+                <span class="workspace-dot"></span>
+                <span class="workspace-title">Search Studio</span>
+            </div>
+        </div>
+        
+        <div class="top-nav-center">
+            <!-- Command Palette Shortcut launcher trigger -->
+            <button class="cmd-palette-btn" onclick="app.toggleCommandPalette()">
+                <i data-lucide="command"></i>
+                <span>Command Palette</span>
+                <kbd>Ctrl+K</kbd>
+            </button>
+        </div>
+
+        <div class="top-nav-right">
+            <!-- System Notifications -->
+            <button class="nav-icon-btn" onclick="app.showToast('System status: Normal operations. GPU Active.', 'info')" title="Notifications">
+                <i data-lucide="bell"></i>
+                <span class="badge-dot"></span>
+            </button>
+            
+            <!-- Settings Modal Trigger -->
+            <button class="nav-icon-btn" onclick="app.openSettings()" title="Settings Panel">
+                <i data-lucide="settings"></i>
+            </button>
+
+            <!-- Profile dropdown trigger -->
+            <div class="profile-menu-container">
+                <button class="profile-avatar-btn" onclick="app.toggleProfileDropdown()" title="User Profile">
+                    <i data-lucide="user-check"></i>
+                </button>
+                
+                <!-- Profile dropdown menu overlay -->
+                <div class="profile-dropdown-menu" id="profile-dropdown">
+                    <div class="profile-header">
+                        <span class="profile-email">guest@aura.ai</span>
+                        <span class="profile-status">Developer Access</span>
+                    </div>
+                    <ul class="profile-options">
+                        <li onclick="app.openSettings()"><i data-lucide="settings"></i> System Settings</li>
+                        <li onclick="app.showToast('Keyboard Shortcuts: Press Ctrl+K for full list', 'info')"><i data-lucide="keyboard"></i> Hotkey Map</li>
+                        <li class="divider"></li>
+                        <li onclick="app.showToast('Logged out guest profile.', 'warning')"><i data-lucide="log-out"></i> Sign Out</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main single-page workspace grid layout -->
+    <div class="app-workspace">
+        
+        <!-- COLUMN 1: LEFT SIDEBAR (Video Library & Searches) -->
+        <aside class="col-library">
+            <!-- Video Library catalog -->
+            <div class="library-section">
+                <div class="section-title-row">
+                    <span class="sec-label">Video Library</span>
+                    <button class="btn-refresh-library" onclick="app.refreshDashboard()" title="Refresh catalog">
+                        <i data-lucide="rotate-cw"></i>
+                    </button>
+                </div>
+                
+                <div class="library-cards-container" id="video-inventory-body">
+                    <div class="library-empty">Loading catalog...</div>
+                </div>
+            </div>
+
+            <!-- Recent Queries -->
+            <div class="recent-searches-section">
+                <span class="sec-label">Recent Queries</span>
+                <div class="recent-searches-list" id="recent-searches-list">
+                    <div class="recent-empty">No recent searches</div>
+                </div>
+            </div>
+            
+            <!-- Sidebar Footer hardware telemetry -->
+            <div class="library-footer">
+                <div class="hardware-target-box">
+                    <span class="status-indicator-dot"></span>
+                    <span class="hardware-name" id="analytics-hardware-target">CPU Mode</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- COLUMN 2: CENTER WORKSPACE (AI Ingestion, search feedback, results cards, inline player) -->
+        <main class="col-search-studio">
+            
+            <!-- Video Ingestion Zone (Upload & Live Progress) -->
+            <section class="ingestion-zone">
+                <!-- Drop drag upload box -->
+                <div class="upload-zone-card" id="upload-container">
+                    <div class="drop-zone" id="upload-drop-zone">
+                        <div class="drop-zone-icon">
+                            <i data-lucide="upload-cloud"></i>
+                        </div>
+                        <p class="drop-zone-text">Drag & drop media files here, or <span class="browse-link">browse</span></p>
+                        <input type="file" id="file-input-hidden" accept="video/mp4,video/quicktime,video/x-matroska" style="display: none;">
+                    </div>
+                    
+                    <div class="upload-form-group">
+                        <input type="text" id="upload-title-input" placeholder="Custom Video Title (Defaults to file name)">
+                        <button class="btn btn-primary" id="upload-submit-btn">
+                            <span>Ingest Video</span>
+                            <i data-lucide="arrow-right"></i>
+                        </button>
+                    </div>
+
+                    <!-- Progress uploading box -->
+                    <div class="upload-progress-container" id="upload-progress-box" style="display: none;">
+                        <div class="progress-details">
+                            <span id="upload-filename-label">video_file.mp4</span>
+                            <span id="upload-percentage-label">0%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="upload-progress-fill" style="width: 0%;"></div>
+                        </div>
+                        <span id="upload-status-text">Uploading chunks...</span>
+                    </div>
+                </div>
+
+                <!-- Live processing pipeline checklist card -->
+                <div class="processing-checklist-card" id="processing-container" style="display: none;">
+                    <div class="checklist-header">
+                        <div class="checklist-title">
+                            <i data-lucide="cpu" class="processing-icon animate-spin"></i>
+                            <h3>Live Ingestion Pipeline</h3>
+                        </div>
+                        <span class="checklist-percentage" id="checklist-percentage-label">0%</span>
+                    </div>
+                    
+                    <!-- Checklist visual progress bar -->
+                    <div class="progress-bar-bg" style="width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; margin-top: 4px; margin-bottom: 8px;">
+                        <div class="progress-bar-fill" id="checklist-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-start), var(--accent-end)); transition: width 0.3s ease;"></div>
+                    </div>
+                    
+                    <!-- Checklist Timeline progress -->
+                    <div class="checklist-timeline">
+                        <div class="checklist-step" id="step-upload">
+                            <div class="step-icon"><i data-lucide="circle"></i></div>
+                            <div class="step-meta">
+                                <h4>Transfer File</h4>
+                                <p>Ingesting video bytes</p>
+                            </div>
+                        </div>
+                        <div class="checklist-step" id="step-cut">
+                            <div class="step-icon"><i data-lucide="circle"></i></div>
+                            <div class="step-meta">
+                                <h4>Scene Cuts</h4>
+                                <p>Extracting segments</p>
+                            </div>
+                        </div>
+                        <div class="checklist-step" id="step-transcribe">
+                            <div class="step-icon"><i data-lucide="circle"></i></div>
+                            <div class="step-meta">
+                                <h4>ASR Whisper</h4>
+                                <p>Transcribing transcripts</p>
+                            </div>
+                        </div>
+                        <div class="checklist-step" id="step-vision">
+                            <div class="step-icon"><i data-lucide="circle"></i></div>
+                            <div class="step-meta">
+                                <h4>Vision YOLO</h4>
+                                <p>Labeling frame tags</p>
+                            </div>
+                        </div>
+                        <div class="checklist-step" id="step-index">
+                            <div class="step-icon"><i data-lucide="circle"></i></div>
+                            <div class="step-meta">
+                                <h4>SigLIP Index</h4>
+                                <p>Quantizing vectors</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Telemetry telemetry indices metrics -->
+                    <div class="telemetry-checklist-stats">
+                        <div class="chk-stat-item">
+                            <span class="chk-lbl">Elapsed Time:</span>
+                            <span class="chk-val" id="telemetry-elapsed">~0s</span>
+                        </div>
+                        <div class="chk-stat-item">
+                            <span class="chk-lbl">Scenes Cut:</span>
+                            <span class="chk-val" id="telemetry-scenes">0 cuts</span>
+                        </div>
+                        <div class="chk-stat-item">
+                            <span class="chk-lbl">Features Index:</span>
+                            <span class="chk-val" id="telemetry-features">0 vectors</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search Console input -->
+            <section class="search-console">
+                <div class="search-input-wrapper">
+                    <i data-lucide="search" class="search-bar-icon"></i>
+                    <input type="text" id="search-query-input" placeholder="Search matching moments: 'man dancing', 'red shirt', 'cat jumping'...">
+                    
+                    <!-- Voice search icon placeholder -->
+                    <button class="voice-search-icon-btn" onclick="app.showToast('Voice Search hardware ready (listening offline...)', 'info')" title="Voice Search Input">
+                        <i data-lucide="mic"></i>
+                    </button>
+                    
+                    <!-- Video Scope Selector Dropdown -->
+                    <div class="filter-group">
+                        <select id="search-video-filter">
+                            <option value="">Across all videos</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" id="search-btn">
+                        <span>Search</span>
+                        <i data-lucide="sparkles"></i>
+                    </button>
+                </div>
+
+                <!-- Suggestion prompt chips -->
+                <div class="suggestion-chips-container">
+                    <span class="chips-label">Suggestions:</span>
+                    <div class="suggestion-chips">
+                        <span class="prompt-chip">A person entering a room</span>
+                        <span class="prompt-chip">Red sports car</span>
+                        <span class="prompt-chip">Someone using a laptop</span>
+                        <span class="prompt-chip">People clapping</span>
+                        <span class="prompt-chip">Dog running</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search Results wrapper -->
+            <section class="search-results-wrapper">
+                <div class="results-meta-header">
+                    <h3 id="results-count-text">0 matching scenes found</h3>
+                    <span id="results-latency-text">Query latency: 0.0ms</span>
+                </div>
+
+                <!-- Horizontal results feed list (Top 3 only) -->
+                <div class="results-feed-list" id="search-results-list">
+                    <div class="results-placeholder">
+                        <i data-lucide="scan-eye"></i>
+                        <p>Submit a natural language query above to scan the multimodal video index.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Expanding Embedded video player (collapsible block) -->
+            <section class="inline-player-wrapper" id="inline-player-wrapper" style="display: none;">
+                <div class="player-panel-card">
+                    <div class="player-header">
+                        <div class="player-title-info">
+                            <i data-lucide="film" class="player-title-icon"></i>
+                            <h3 id="inline-player-video-title">No Video Selected</h3>
+                        </div>
+                        <button class="btn-close-player" onclick="app.closeInlinePlayer()">
+                            <i data-lucide="minimize-2"></i>
+                        </button>
+                    </div>
+                    <div class="video-container">
+                        <!-- Playback timeline overlay overlays captions directly -->
+                        <video id="main-video-player" controls preload="auto">
+                            <source src="" type="video/mp4">
+                            Your browser does not support HTML5 video player.
+                        </video>
+                    </div>
+                    
+                    <!-- Advanced custom video player controls -->
+                    <div class="custom-playback-controls">
+                        <!-- Speed select -->
+                        <div class="playback-control-group">
+                            <span class="ctrl-label">Speed</span>
+                            <select id="player-playback-speed" class="player-control-select" onchange="app.changePlayerSpeed()">
+                                <option value="0.5">0.5x</option>
+                                <option value="1.0" selected>1.0x (Normal)</option>
+                                <option value="1.5">1.5x</option>
+                                <option value="2.0">2.0x</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Loop scene toggle -->
+                        <div class="playback-control-group">
+                            <label class="player-control-checkbox-label">
+                                <input type="checkbox" id="player-loop-scene-check">
+                                <span>Loop Scene Clip</span>
+                            </label>
+                        </div>
+
+                        <!-- Previous/Next match timeline buttons -->
+                        <div class="playback-control-group">
+                            <button class="btn-control-step" onclick="app.seekSceneMatch(-1)" title="Previous Search Match"><i data-lucide="chevron-left"></i> Previous Match</button>
+                            <button class="btn-control-step" onclick="app.seekSceneMatch(1)" title="Next Search Match">Next Match <i data-lucide="chevron-right"></i></button>
+                        </div>
+                        
+                        <!-- Frame stepping back/forward -->
+                        <div class="playback-control-group">
+                            <button class="btn-control-step" onclick="app.stepFrame(-1)" title="Step 1 Frame Backwards"><i data-lucide="skip-back"></i></button>
+                            <span class="ctrl-label">Step Frame</span>
+                            <button class="btn-control-step" onclick="app.stepFrame(1)" title="Step 1 Frame Forwards"><i data-lucide="skip-forward"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+    </div>
+
+    <!-- CONTEXT MENU DROPDOWN (Clicking library catalog cards '•••') -->
+    <div class="context-menu-dropdown" id="video-context-menu">
+        <ul class="context-menu-options">
+            <li id="ctx-opt-open"><i data-lucide="play-circle"></i> Open Video Context</li>
+            <li id="ctx-opt-rename"><i data-lucide="edit-3"></i> Rename Video</li>
+            <li id="ctx-opt-reprocess"><i data-lucide="refresh-cw"></i> Reprocess AI Index</li>
+            <li id="ctx-opt-copy-id"><i data-lucide="copy"></i> Copy Video ID</li>
+            <li class="divider"></li>
+            <li id="ctx-opt-delete" class="danger"><i data-lucide="trash-2"></i> Purge From Database</li>
+        </ul>
+    </div>
+
+    <!-- COMMAND PALETTE MODAL OVERLAY (Ctrl + K) -->
+    <div class="command-palette-backdrop" id="command-palette-modal">
+        <div class="command-palette-content">
+            <div class="cmd-palette-header">
+                <i data-lucide="search" class="cmd-search-icon"></i>
+                <input type="text" id="cmd-palette-input" placeholder="Type a command, hotkey action, or fuzzy search video titles..." oninput="app.filterCommandPalette()">
+            </div>
+            
+            <div class="cmd-palette-results" id="cmd-palette-results-list">
+                <!-- Populated dynamically via JS -->
+            </div>
+            
+            <div class="cmd-palette-footer">
+                <span>Use <kbd>↑</kbd> <kbd>↓</kbd> to navigate, <kbd>Enter</kbd> to select, <kbd>Esc</kbd> to close.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS DIALOG MODAL -->
+    <div class="settings-modal-backdrop" id="settings-modal">
+        <div class="settings-modal-content">
+            <div class="settings-modal-header">
+                <h3>AURA System Configurations</h3>
+                <button class="settings-close-btn" onclick="app.closeSettings()"><i data-lucide="x"></i></button>
+            </div>
+            
+            <div class="settings-modal-body">
+                <div class="settings-sidebar-tabs">
+                    <span class="settings-tab-link active" onclick="app.switchSettingsTab('tab-general')">General</span>
+                    <span class="settings-tab-link" onclick="app.switchSettingsTab('tab-shortcuts')">Keyboard Shortcuts</span>
+                    <span class="settings-tab-link" onclick="app.switchSettingsTab('tab-models')">AI Models</span>
+                </div>
+                
+                <div class="settings-content-pane">
+                    <!-- Tab 1: General configurations -->
+                    <div class="settings-panel active" id="tab-general">
+                        <div class="settings-group">
+                            <label>Default Search Count (Top K)</label>
+                            <input type="text" id="settings-top-k" value="3" disabled style="background: rgba(255,255,255,0.02); color: var(--text-muted);">
+                            <span class="group-desc">Search Studio runs on top-3 quality scoring filters.</span>
+                        </div>
+                        <div class="settings-group">
+                            <label>Default Interface Tone</label>
+                            <div style="font-size: 13px; color: var(--text-secondary);">Apple Space Black (Dark Mode enforced)</div>
+                        </div>
+                        <div class="settings-group danger-zone">
+                            <h4>Danger Area</h4>
+                            <p>Completely delete all indexed frames, transcript vectors, and DB records from database files.</p>
+                            <button class="btn btn-danger btn-sm" onclick="app.purgeAllCatalog()">Purge Vector Store & sqlite3 Catalog</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab 2: Keyboard shortcuts map -->
+                    <div class="settings-panel" id="tab-shortcuts">
+                        <div class="shortcuts-legend">
+                            <div class="shortcut-item">
+                                <span class="shortcut-desc">Open Universal Command Palette</span>
+                                <kbd>Ctrl + K</kbd>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-desc">Focus Search input</span>
+                                <kbd>/</kbd>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-desc">Play / Pause Video Player</span>
+                                <kbd>Space</kbd>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-desc">Step 1 Frame Backwards</span>
+                                <kbd>←</kbd>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-desc">Step 1 Frame Forwards</span>
+                                <kbd>→</kbd>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-desc">Jump Seek to Previous Match</span>
+                                <kbd>Shift + ←</kbd>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-desc">Jump Seek to Next Match</span>
+                                <kbd>Shift + →</kbd>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-desc">Close Command Palette / Modals</span>
+                                <kbd>Esc</kbd>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Model configurations info -->
+                    <div class="settings-panel" id="tab-models">
+                        <div class="models-info-list">
+                            <div class="model-info-row">
+                                <span class="model-lbl">Multimodal Visual Search:</span>
+                                <span class="model-val">Google SigLIP (symmetric 768-dim)</span>
+                            </div>
+                            <div class="model-info-row">
+                                <span class="model-lbl">Speech Recognition (ASR):</span>
+                                <span class="model-val">OpenAI Whisper (Medium)</span>
+                            </div>
+                            <div class="model-info-row">
+                                <span class="model-lbl">Object Categorization:</span>
+                                <span class="model-val">YOLOv11 (Ultralytics)</span>
+                            </div>
+                            <div class="model-info-row">
+                                <span class="model-lbl">Visual Scene Cut Segmentation:</span>
+                                <span class="model-val">PySceneDetect (HSV threshold)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- app scripts core -->
+    <script src="/static/app.js"></script>
+    <script>
+        // Bootstrap icons
+        document.addEventListener("DOMContentLoaded", () => {
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+        });
+    </script>
+</body>
+</html>

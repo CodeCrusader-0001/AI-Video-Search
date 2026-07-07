@@ -1,0 +1,23 @@
+# Implementation Tasks
+
+- `[x]` Initialize workspace directories and configuration files
+- `[x]` Configure Docker Compose setup (PostgreSQL, Qdrant, MinIO, Redis, RabbitMQ)
+- `[x]` Create PostgreSQL schemas and migrations (SQLAlchemy models)
+- `[x]` Set up FastAPI Backend (API structure, auth routes, video CRUD, metadata endpoints)
+- `[x]` Implement Celery Workers & Ingestion Pipeline
+    - `[x]` Video demuxing, PySceneDetect partitioning, and frame storage (S3)
+    - `[x]` Whisper Audio-to-Text extraction with timestamps
+    - `[x]` YOLOv11 object detection & BLIP-2 frame captioning
+    - `[x]` SigLIP visual/text embeddings extraction & indexing in Qdrant
+- `[x]` Implement Hybrid Search Pipeline
+    - `[x]` SigLIP vector search queries against Qdrant
+    - `[x]` Full-text PostgreSQL search matching transcripts and tags
+    - `[x]` Reciprocal Rank Fusion (RRF) & Cross-Encoder reranking
+- `[x]` Develop Next.js Frontend App (SPA implementation)
+    - `[x]` Setup Next.js environment & Tailwind/modern visual layout (HTML5+CSS3 SPA layout)
+    - `[x]` Ingestion upload UI & processing status monitor
+    - `[x]` Interactive search dashboard, results timeline, and video player seek-to-timestamp
+- `[x]` Testing & Verification
+    - `[x]` Write unit and integration tests
+    - `[x]` Perform manual validation of ingestion and querying
+- `[x]` Complete documentation and interview prep files
