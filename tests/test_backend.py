@@ -10,8 +10,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend.app.core.config import settings
 
 # Set up test database environment (use clean SQLite for tests) BEFORE database engines are created
-settings.DATABASE_URL = "sqlite:///c:/Users/ashis/Music/Desktop/A/video_search_test.db"
-settings.ASYNC_DATABASE_URL = "sqlite+aiosqlite:///c:/Users/ashis/Music/Desktop/A/video_search_test.db"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT_URL = PROJECT_ROOT.replace("\\", "/")
+settings.DATABASE_URL = f"sqlite:///{PROJECT_ROOT_URL}/video_search_test.db"
+settings.ASYNC_DATABASE_URL = f"sqlite+aiosqlite:///{PROJECT_ROOT_URL}/video_search_test.db"
 settings.QDRANT_URL = ":memory:"
 
 from backend.app.main import app
@@ -26,7 +28,7 @@ def setup_test_db():
     # Cleanup database files after tests complete
     Base.metadata.drop_all(bind=sync_engine)
     sync_engine.dispose()
-    db_file = "c:/Users/ashis/Music/Desktop/A/video_search_test.db"
+    db_file = os.path.join(PROJECT_ROOT, "video_search_test.db")
     if os.path.exists(db_file):
         try:
             os.remove(db_file)
@@ -142,3 +144,11 @@ def test_video_upload_and_search_workflow(
         assert "laptop" in first_result["objects"]
         assert "gradient descent" in first_result["transcript_snippet"]
         assert first_result["similarity_score"] > 0
+
+        # Verify duplicate upload logic: uploading with same title should return the existing COMPLETED video
+        dup_files = {"file": ("demo_video.mp4", mock_video_content, "video/mp4")}
+        dup_upload_res = client.post("/api/v1/videos/upload?title=DemoVideo", files=dup_files, headers=headers)
+        assert dup_upload_res.status_code == 201
+        dup_video_data = dup_upload_res.json()
+        assert dup_video_data["id"] == video_id
+        assert dup_video_data["status"] == "COMPLETED"

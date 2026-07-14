@@ -23,6 +23,11 @@ def run_pipeline_local(video_id: str) -> None:
         db.close()
         return
 
+    if video.status == "COMPLETED":
+        print(f"Video {video_id} is already processed. Skipping pipeline execution.")
+        db.close()
+        return
+
     print(f"Starting pipeline execution for video: {video.title} (ID: {video_id})")
     video.status = "PROCESSING"
     db.commit()

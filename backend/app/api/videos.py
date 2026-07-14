@@ -29,6 +29,19 @@ async def upload_video(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Check if a completed or processing video with the same title already exists for this user
+    result = await db.execute(
+        select(Video).where(
+            Video.user_id == current_user.id,
+            Video.title == title,
+            Video.status.in_(["COMPLETED", "PROCESSING"])
+        )
+    )
+    existing_video = result.scalars().first()
+    if existing_video:
+        print(f"Video '{title}' is already '{existing_video.status}'. Skipping upload/processing.")
+        return existing_video
+
     # Ensure raw subdirectory exists locally for upload caching
     temp_dir = os.path.join(settings.LOCAL_STORAGE_PATH, "temp")
     os.makedirs(temp_dir, exist_ok=True)

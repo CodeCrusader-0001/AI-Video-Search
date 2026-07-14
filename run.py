@@ -4,10 +4,12 @@ import subprocess
 import uvicorn
 
 # Configure environment variables defaults
-os.environ.setdefault("DATABASE_URL", "sqlite:///c:/Users/ashis/Music/Desktop/A/video_search.db")
-os.environ.setdefault("ASYNC_DATABASE_URL", "sqlite+aiosqlite:///c:/Users/ashis/Music/Desktop/A/video_search.db")
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT_URL = PROJECT_ROOT.replace("\\", "/")
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{PROJECT_ROOT_URL}/video_search.db")
+os.environ.setdefault("ASYNC_DATABASE_URL", f"sqlite+aiosqlite:///{PROJECT_ROOT_URL}/video_search.db")
 os.environ.setdefault("QDRANT_URL", ":memory:")
-os.environ.setdefault("LOCAL_STORAGE_PATH", "c:/Users/ashis/Music/Desktop/A/storage")
+os.environ.setdefault("LOCAL_STORAGE_PATH", os.path.join(PROJECT_ROOT, "storage"))
 
 def bootstrap():
     print("=================================================================")

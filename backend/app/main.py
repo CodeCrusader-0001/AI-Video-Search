@@ -1,3 +1,4 @@
+import os
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,17 +57,19 @@ app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Aut
 app.include_router(videos.router, prefix=f"{settings.API_V1_STR}/videos", tags=["Videos"])
 app.include_router(search.router, prefix=f"{settings.API_V1_STR}/search", tags=["Semantic Search"])
 
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
+
 # Mount static frontend assets
-app.mount("/static", StaticFiles(directory="c:/Users/ashis/Music/Desktop/A/frontend"), name="static")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 # Route root to serve the SPA landing index page
 @app.get("/")
 def read_root():
-    return FileResponse("c:/Users/ashis/Music/Desktop/A/frontend/index.html")
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
-    return FileResponse("c:/Users/ashis/Music/Desktop/A/frontend/favicon.ico")
+    return FileResponse(os.path.join(FRONTEND_DIR, "favicon.ico"))
 
 if __name__ == "__main__":
     uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)

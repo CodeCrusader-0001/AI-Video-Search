@@ -3,9 +3,12 @@ from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+PROJECT_ROOT_URL = PROJECT_ROOT.replace("\\", "/")
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),
+        env_file=os.path.join(PROJECT_ROOT, ".env"),
         env_file_encoding="utf-8",
         extra="ignore"
     )
@@ -18,8 +21,8 @@ class Settings(BaseSettings):
 
     # Relational Database Settings
     # Fallback to local SQLite file in the workspace
-    DATABASE_URL: str = Field(default="sqlite:///c:/Users/ashis/Music/Desktop/A/video_search.db")
-    ASYNC_DATABASE_URL: str = Field(default="sqlite+aiosqlite:///c:/Users/ashis/Music/Desktop/A/video_search.db")
+    DATABASE_URL: str = Field(default=f"sqlite:///{PROJECT_ROOT_URL}/video_search.db")
+    ASYNC_DATABASE_URL: str = Field(default=f"sqlite+aiosqlite:///{PROJECT_ROOT_URL}/video_search.db")
 
     # Vector Database Settings (Qdrant)
     # Default to ":memory:" for in-memory testing when no Qdrant server is running
@@ -40,7 +43,7 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = "ai-video-search-assets"
     
     # Path for local storage fallback
-    LOCAL_STORAGE_PATH: str = "c:/Users/ashis/Music/Desktop/A/storage"
+    LOCAL_STORAGE_PATH: str = Field(default=os.path.join(PROJECT_ROOT, "storage"))
 
     # AI Model Settings
     SIGLIP_MODEL_NAME: str = "google/siglip-base-patch16-224"

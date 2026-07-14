@@ -1,8 +1,19 @@
-# AURA — Multimodal AI Video Search Engine
+# 🌌 AURA — Multimodal AI Video Search Engine
 
-AURA is a production-grade, state-of-the-art AI-powered Video Search Engine. It enables users to ingest video catalogs, auto-partition visual scenes, transcribe audio speech tracks, categorize frame-level object tags, and execute semantic natural-language searches. 
+AURA is a production-grade, state-of-the-art AI-powered Video Search Engine. It enables users to ingest video catalogs, auto-partition visual scenes, transcribe audio speech tracks, detect visual entities, and execute high-speed semantic natural-language searches.
 
-Designed around a sleek, unified single-workspace interface, AURA provides real-time progress metrics during GPU-accelerated video ingestion and returns top-3 search results containing matched frames, 3-second autoplaying loops, BLIP descriptions, speech transcripts, and YOLO entity tags. It syncs directly with an embedded media player offering advanced frame-stepping and looping capabilities.
+Designed around a sleek, unified single-workspace desktop interface, AURA provides real-time progress metrics during GPU-accelerated video ingestion and returns top search results containing matched frames, 3-second autoplaying loops, BLIP descriptions, speech transcripts, and YOLO entity tags. It syncs directly with an embedded media player offering advanced frame-stepping and looping capabilities.
+
+---
+
+## ⚡ Key Features
+
+*   **Multimodal Semantic Alignment (SigLIP)**: Maps visual frame features and natural language search queries into a shared 768-dimensional vector space, enabling similarity-based search without keyword tag matches.
+*   **Speech Recognition (OpenAI Whisper)**: Automatic Speech Recognition (ASR) system transcribing raw audio streams into time-aligned text segments.
+*   **Object Categorization (YOLOv11)**: Real-time object detection model that categorizes visual objects (e.g. people, cars, laptops) present in keyframes.
+*   **Visual Scene Cut Segmentation (PySceneDetect)**: Detects visual transitions using HSV color-space histogram shifts, splitting videos into individual thematic scenes rather than arbitrary time cuts.
+*   **Zero-Config Path Resolution**: All databases, cache locations, static folders, and media assets are dynamically resolved relative to the workspace root, enabling a plug-and-play setup.
+*   **Intelligent Ingestion Caching**: Detects duplicate uploads of the same video and instantly returns/reuses the existing `COMPLETED` or `PROCESSING` metadata records, preventing redundant GPU/CPU inference passes.
 
 ---
 
@@ -46,21 +57,21 @@ graph TD
 AURA integrates modern backend microservices with deep learning models running on a unified worker interface:
 
 ### 1. Model Specifications
-*   **Multimodal Semantic Alignment (SigLIP)**: Google's symmetric `siglip-base-patch16-224` image-text dual encoder. It maps visual frame features and search queries into a shared 768-dimensional vector space, calculating semantic similarity without requiring matching text tags.
-*   **Speech Recognition (OpenAI Whisper)**: Automatic Speech Recognition (ASR) system transcribing raw audio streams into time-aligned text fragments. It enables keyword searches to sync directly with spoken content.
-*   **Object Categorization (YOLOv11)**: Real-time object detection model that categorizes visual objects (e.g. people, cars, laptops) present in keyframes, populating target entity chips.
-*   **Visual Scene Cut Segmentation (PySceneDetect)**: Detects visual transitions using HSV color-space histogram shifts, splitting videos into individual thematic scenes rather than arbitrary time cuts.
+*   **SigLIP (`siglip-base-patch16-224`)**: Google's symmetric image-text dual encoder used for embedding visual frames and textual search queries.
+*   **Whisper (`openai/whisper-small`)**: High-performance automatic speech recognition model for word/sentence level audio transcript alignments.
+*   **YOLOv11 (`yolov8n.pt` / `yolov11n.pt`)**: Real-time object boundary detector that tags entity chips (e.g. `person`, `laptop`, `car`).
+*   **PySceneDetect**: Performs content-aware scene partitioning using HSV histogram transitions.
 
-### 2. Infrastructure & Infrastructure Layers
+### 2. Infrastructure Layers
 *   **FastAPI Gateway**: Asynchronous ASGI web framework acting as the ingestion API, validation filter, and media streaming server.
-*   **Qdrant Vector DB**: Scalable vector database executing high-speed Cosine Similarity indexes over the 768-dimensional SigLIP frame embeddings.
-*   **SQLAlchemy Core**: Relational database engine mapping metadata models (Videos, Scenes, Keyframes, Transcripts) over SQLite tables.
+*   **Qdrant Vector DB**: High-speed vector search engine configured for Cosine Similarity indexing.
+*   **SQLAlchemy Core & SQLite**: Relational database engine mapping metadata models (Videos, Scenes, Keyframes, Transcripts).
 
 ---
 
-## ⚡ NVIDIA CUDA GPU Acceleration
+## 🚀 NVIDIA CUDA GPU Acceleration
 
-AURA detects and utilizes integrated NVIDIA Laptop GPUs (such as the **NVIDIA GeForce RTX 3050 6GB**) to accelerate PyTorch model inferences:
+AURA automatically detects and utilizes integrated NVIDIA GPUs to accelerate PyTorch model inference:
 
 | Model Pipeline Stage | CPU Processing Time (5 min Video) | GPU CUDA Processing Time (5 min Video) | Speedup Multiplier |
 | :--- | :--- | :--- | :--- |
@@ -70,12 +81,12 @@ AURA detects and utilizes integrated NVIDIA Laptop GPUs (such as the **NVIDIA Ge
 | **Total Ingestion Execution** | **~290 seconds** | **~25 seconds** | **11.6x** |
 
 ### Configuration Verification
-When booted, AURA's local worker queries PyTorch device properties and logs telemetry metrics directly to the Left Sidebar library footer:
+When booting, AURA queries PyTorch device properties and logs telemetry metrics:
 ```python
 import torch
 print(f"CUDA Available: {torch.cuda.is_available()}")
 print(f"Active Device: {torch.cuda.get_device_name(0)}")
-# Output: Active Device: NVIDIA GeForce RTX 3050 Laptop GPU
+# Example Output: Active Device: NVIDIA GeForce RTX 3050 Laptop GPU
 ```
 
 ---
@@ -102,59 +113,23 @@ The application is structured around a single-workspace desktop studio. All oper
 
 ---
 
-## 🛰️ REST API Specification Reference
+## 🛰️ REST API Specification
 
-All endpoints support JWT authentication headers. Interactive Swagger Docs are hosted at `/docs`.
+Interactive Swagger Docs are hosted at `/docs`. All endpoints support JWT authentication headers.
 
 ### 1. Authentication
 *   `POST /api/v1/auth/register` — Create account credentials.
 *   `POST /api/v1/auth/login` — Authorize developer logs, returning JWT tokens.
 
 ### 2. Video Catalog
-*   `POST /api/v1/videos/upload?title={title}` — Multipart video stream upload.
+*   `POST /api/v1/videos/upload?title={title}` — Multipart video stream upload. Checks for duplicate title uploads and reuses existing completed/processing instances.
 *   `GET /api/v1/videos` — List catalog records, durations, progress parameters, and processing statuses.
 *   `PUT /api/v1/videos/{video_id}?title={title}` — Update video title.
 *   `DELETE /api/v1/videos/{video_id}` — Purge relational DB records, local frame clips, and Qdrant vectors.
-*   `POST /api/v1/videos/{video_id}/reprocess` — Repartition and re-encode frames into the vector search engine.
+*   `POST /api/v1/videos/{video_id}/reprocess` — Force repartition and re-encode frames into the vector search engine.
 
 ### 3. Multimodal Search
-*   `GET /api/v1/search?q={query_string}&video_id={optional_filter}` — Execute Cosine Similarity search.
-    
-#### Search Response JSON Schema
-```json
-{
-  "query": "man entering a room",
-  "latency_ms": 12.4,
-  "results": [
-    {
-      "id": "scene_uuid_1",
-      "video_id": "video_uuid_1",
-      "video_title": "Office Entrance CCTV",
-      "start_time": 12.5,
-      "end_time": 15.5,
-      "timestamp": 13.5,
-      "similarity_score": 0.884,
-      "caption": "A man in a black jacket opening a glass door and entering an office workspace.",
-      "transcript_snippet": "good morning everyone",
-      "objects": ["person", "door", "backpack"],
-      "frame_image_url": "/api/v1/videos/stream/frames/frame_135.jpg"
-    }
-  ]
-}
-```
-
----
-
-## 🎹 Keyboard Shortcuts
-
-The workspace listens to global keyboard events to accelerate catalog searching and playback analysis:
-
-*   <kbd>Ctrl</kbd> + <kbd>K</kbd> (or <kbd>Cmd</kbd> + <kbd>K</kbd>) — **Command Palette Overlay** (fuzzy search videos, open configurations, trigger uploads).
-*   <kbd>/</kbd> — **Focus Search Input** (instantly jumps selection cursor into the centerpiece search query bar).
-*   <kbd>Space</kbd> — **Play / Pause Video** (toggles state on the inline media player).
-*   <kbd>←</kbd> / <kbd>→</kbd> — **Precision Frame Step** (skips media timeline back/forward by `1 / 30` seconds).
-*   <kbd>Shift</kbd> + <kbd>←</kbd> / <kbd>→</kbd> — **Jump Search Matches** (seeks the player playhead directly to the previous/next matched scene in the Top-3 results feed).
-*   <kbd>Esc</kbd> — **Dismiss Overlays** (closes command palette, settings panels, or collapses inline video players).
+*   `GET /api/v1/search?q={query_string}&video_id={optional_filter}` — Execute Cosine Similarity search over visual frame vectors.
 
 ---
 
@@ -196,11 +171,31 @@ python -m venv .venv
 Ensure you have CUDA-supported PyTorch installed for GPU acceleration:
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-pip install -r backend/requirements.txt
+pip install -r backend/requirements.txt -r worker/requirements.txt
 ```
 
-### 3. Bootstrap Gateway & Services
+### 3. Run Automated Tests
+Verify that your local paths and services are working correctly by executing pytest:
+```bash
+python -m pytest
+```
+
+### 4. Launch the API Gateway
+Bootstrap the FastAPI local server:
 ```bash
 python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
-Open **`http://127.0.0.1:8000/`** in your browser. Perform a hard refresh (`Ctrl + F5`) to verify the clean, two-column interface.
+Open **`http://127.0.0.1:8000/`** in your browser. Perform a hard refresh (`Ctrl + F5`) to access the Search Studio client workspace.
+
+---
+
+## 🎹 Keyboard Shortcuts
+
+The workspace listens to global keyboard events to accelerate catalog searching and playback analysis:
+
+*   <kbd>Ctrl</kbd> + <kbd>K</kbd> (or <kbd>Cmd</kbd> + <kbd>K</kbd>) — **Command Palette Overlay** (fuzzy search videos, open configurations, trigger uploads).
+*   <kbd>/</kbd> — **Focus Search Input** (instantly jumps selection cursor into the centerpiece search query bar).
+*   <kbd>Space</kbd> — **Play / Pause Video** (toggles state on the inline media player).
+*   <kbd>←</kbd> / <kbd>→</kbd> — **Precision Frame Step** (skips media timeline back/forward by `1 / 30` seconds).
+*   <kbd>Shift</kbd> + <kbd>←</kbd> / <kbd>→</kbd> — **Jump Search Matches** (seeks the player playhead directly to the previous/next matched scene in the Top-3 results feed).
+*   <kbd>Esc</kbd> — **Dismiss Overlays** (closes command palette, settings panels, or collapses inline video players).
