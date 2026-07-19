@@ -19,14 +19,14 @@ graph TD
     Nginx -->|Route Request| FastAPI[FastAPI Gateway]
     
     %% Ingest Pipelines (Local vs. Prod)
-    subgraph FastAPI In-Process Ingestion (Local Mode)
+    subgraph local_ingest ["FastAPI In-Process Ingestion (Local Mode)"]
         FastAPI -->|BackgroundTasks thread| LocalWorker[Local Processing Pipeline]
     end
     
-    subgraph Celery Queue Ingestion (Production Mode)
+    subgraph celery_ingest ["Celery Queue Ingestion (Production Mode)"]
         FastAPI -->|Dispatch Ingestion Task| Redis[Redis Broker Queue]
         
-        subgraph Parallel CUDA Compute
+        subgraph cuda_compute ["Parallel CUDA Compute"]
             Redis -->|Dispatch Job 0| Celery_0[Celery Worker 0 (GPU 0)]
             Redis -->|Dispatch Job 1| Celery_1[Celery Worker 1 (GPU 1)]
         end
