@@ -7,10 +7,15 @@ class VectorDBService:
     def __init__(self):
         # Initializes in-memory client or connects to a Qdrant host
         if settings.is_qdrant_memory:
+            import sys
             import os
-            os.makedirs(settings.qdrant_local_path, exist_ok=True)
-            self.client = QdrantClient(path=settings.qdrant_local_path)
-            print(f"VectorDBService initialized using local persistent Qdrant client at {settings.qdrant_local_path}")
+            if "pytest" in sys.modules or os.environ.get("TESTING") == "True":
+                self.client = QdrantClient(location=":memory:")
+                print("VectorDBService initialized using in-memory Qdrant client (Testing Mode)")
+            else:
+                os.makedirs(settings.qdrant_local_path, exist_ok=True)
+                self.client = QdrantClient(path=settings.qdrant_local_path)
+                print(f"VectorDBService initialized using local persistent Qdrant client at {settings.qdrant_local_path}")
         else:
             self.client = QdrantClient(
                 url=settings.QDRANT_URL,
