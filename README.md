@@ -27,14 +27,14 @@ graph TD
         FastAPI -->|Dispatch Ingestion Task| Redis[Redis Broker Queue]
         
         subgraph cuda_compute ["Parallel CUDA Compute"]
-            Redis -->|Dispatch Job 0| Celery_0[Celery Worker 0 (GPU 0)]
-            Redis -->|Dispatch Job 1| Celery_1[Celery Worker 1 (GPU 1)]
+            Redis -->|Dispatch Job 0| Celery_0["Celery Worker 0 (GPU 0)"]
+            Redis -->|Dispatch Job 1| Celery_1["Celery Worker 1 (GPU 1)"]
         end
     end
     
     %% Storage & Metadata (Shared Targets)
-    LocalWorker & Celery_0 & Celery_1 -->|Relational Data SQL| DB[(PostgreSQL / SQLite)]
-    LocalWorker & Celery_0 & Celery_1 -->|Media File Uploads| OS[(AWS S3 / MinIO / Local Disk)]
+    LocalWorker & Celery_0 & Celery_1 -->|Relational Data SQL| DB[("PostgreSQL / SQLite")]
+    LocalWorker & Celery_0 & Celery_1 -->|Media File Uploads| OS[("AWS S3 / MinIO / Local Disk")]
     
     %% Deep Learning Workers Pipeline
     LocalWorker & Celery_0 & Celery_1 -->|HSV Frame Cuts| PyScene[PySceneDetect ContentDetector]
@@ -42,10 +42,10 @@ graph TD
     LocalWorker & Celery_0 & Celery_1 -->|Visual Embeddings| SigLIP[SigLIP Frame Encoder]
     LocalWorker & Celery_0 & Celery_1 -->|Visual Detections| YOLO[YOLOv8 Object Detector]
     LocalWorker & Celery_0 & Celery_1 -->|Auto Captioning| BLIP[BLIP-Image-Captioning-Base]
-    LocalWorker & Celery_0 & Celery_1 -->|Mock Frame Text| OCR[PaddleOCR / EasyOCR - Planned Extension]
+    LocalWorker & Celery_0 & Celery_1 -->|Mock Frame Text| OCR["PaddleOCR / EasyOCR - Planned Extension"]
     
     %% Vector Indexing
-    SigLIP -->|768-dim Visual Vectors| Qdrant[(Qdrant Vector DB)]
+    SigLIP -->|768-dim Visual Vectors| Qdrant[("Qdrant Vector DB")]
 ```
 
 ---
