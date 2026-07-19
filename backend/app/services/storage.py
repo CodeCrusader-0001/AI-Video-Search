@@ -91,7 +91,11 @@ class StorageService:
         else:
             # For local media, we generate a relative backend streaming URL
             # The backend will route GET /api/v1/videos/stream/{filename} to return the file
-            clean_key = file_key.replace(self.local_path, "").replace("\\", "/").strip("/")
+            try:
+                rel_path = os.path.relpath(file_key, self.local_path)
+                clean_key = rel_path.replace("\\", "/").strip("/")
+            except Exception:
+                clean_key = file_key.replace(self.local_path, "").replace("\\", "/").strip("/")
             return f"/api/v1/videos/stream/{clean_key}"
 
     def delete_file(self, file_key: str) -> None:

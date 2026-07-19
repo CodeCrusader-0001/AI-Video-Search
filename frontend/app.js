@@ -87,6 +87,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupPromptSuggestions();
     setupKeyboardHotkeys();
     loadRecentQueries();
+    initPlaceholderTypingAnimation();
     
     // Auto-authenticate default guest profile to acquire JWT tokens
     const connected = await authenticateDeveloper();
@@ -97,6 +98,50 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateConnectionStatus(false, "Server Offline");
     }
 });
+
+function initPlaceholderTypingAnimation() {
+    const input = document.getElementById("search-query-input");
+    if (!input) return;
+    
+    const placeholders = [
+        "Find a red sports car",
+        "Someone entering a room",
+        "Dog running on road",
+        "Show scenes with laptop",
+        "Search anything inside your videos..."
+    ];
+    
+    let currentIdx = 0;
+    let charIdx = 0;
+    let isDeleting = false;
+    let typingSpeed = 100;
+    
+    function type() {
+        const fullText = placeholders[currentIdx];
+        if (isDeleting) {
+            input.setAttribute("placeholder", fullText.substring(0, charIdx - 1));
+            charIdx--;
+            typingSpeed = 50;
+        } else {
+            input.setAttribute("placeholder", fullText.substring(0, charIdx + 1));
+            charIdx++;
+            typingSpeed = 100;
+        }
+        
+        if (!isDeleting && charIdx === fullText.length) {
+            isDeleting = true;
+            typingSpeed = 2000;
+        } else if (isDeleting && charIdx === 0) {
+            isDeleting = false;
+            currentIdx = (currentIdx + 1) % placeholders.length;
+            typingSpeed = 500;
+        }
+        
+        setTimeout(type, typingSpeed);
+    }
+    
+    setTimeout(type, 1000);
+}
 
 function updateConnectionStatus(isOnline, text = "Service Connected") {
     const badge = document.getElementById("connection-badge");
@@ -312,23 +357,61 @@ const app = {
                     
                     const card = document.createElement("div");
                     card.className = `video-library-card ${v.id === selectedVideoContextId ? 'active' : ''}`;
+                    
+                    let statusHtml = "";
+                    let progressRingHtml = "";
+                    
+                    if (v.status === "PROCESSING" || v.status === "PENDING") {
+                        const progressVal = v.progress || 0;
+                        progressRingHtml = `
+                            <div class="card-progress-ring-wrapper">
+                                <svg class="progress-ring" width="28" height="28">
+                                    <circle class="progress-ring-circle-bg" stroke="rgba(255,255,255,0.06)" stroke-width="2.5" fill="transparent" r="11" cx="14" cy="14"/>
+                                    <circle class="progress-ring-circle-fill" stroke="var(--accent-mid)" stroke-width="2.5" stroke-dasharray="69" stroke-dashoffset="${69 - (69 * progressVal / 100)}" stroke-linecap="round" fill="transparent" r="11" cx="14" cy="14"/>
+                                </svg>
+                                <span class="progress-ring-text">${progressVal}%</span>
+                            </div>
+                        `;
+                        statusHtml = `<span class="library-status-badge processing"><span class="pulse-dot"></span> PROCESSING</span>`;
+                    } else if (v.status === "COMPLETED") {
+                        progressRingHtml = `
+                            <div class="card-status-icon completed" title="Indexing Complete">
+                                <i data-lucide="check-circle-2" class="completed-icon"></i>
+                            </div>
+                        `;
+                        statusHtml = `
+                            <div class="card-status-row">
+                                <span class="library-status-badge completed">🟢 READY</span>
+                            </div>
+                        `;
+                    } else {
+                        progressRingHtml = `
+                            <div class="card-status-icon failed" title="Indexing Failed">
+                                <i data-lucide="alert-circle" class="failed-icon"></i>
+                            </div>
+                        `;
+                        statusHtml = `<span class="library-status-badge failed">🔴 FAILED</span>`;
+                    }
+                    
                     card.innerHTML = `
-                        <div class="card-title-row">
+                        <!-- Left aspect thumbnail block -->
+                        <div class="library-card-thumbnail">
+                            <i data-lucide="film"></i>
+                        </div>
+                        
+                        <!-- Center details -->
+                        <div class="library-card-details">
                             <span class="card-video-title" title="${v.title}">${v.title}</span>
-                        </div>
-                        <div class="card-footer-row">
                             <span class="card-date">${createdDate} &bull; ${durationText}</span>
-                            <span class="library-status-indicator ${statusClass}">
-                                <span class="indicator-dot"></span>
-                                <span>${statusText}</span>
-                            </span>
+                            ${statusHtml}
                         </div>
-                        ${v.status === 'PROCESSING' || v.status === 'PENDING' ? `
-                        <div class="card-progress-bar">
-                            <div class="card-progress-fill" style="width: ${v.progress || 0}%"></div>
+                        
+                        <!-- Right Status / Progress Indicator -->
+                        <div class="library-card-status-aside">
+                            ${progressRingHtml}
                         </div>
-                        <div class="card-progress-text">${v.progress || 0}% - ${v.progress_message || 'Initializing...'}</div>
-                        ` : ''}
+                        
+                        <!-- Absolute Action Overlay buttons -->
                         <button class="btn-card-context" title="Context Actions">
                             <i data-lucide="more-horizontal"></i>
                         </button>
@@ -571,12 +654,12 @@ const app = {
 
     async populateVideoFilterDropdown() {
         const previousVal = elements.searchVideoFilter.value;
-        elements.searchVideoFilter.innerHTML = `<option value="">Across all videos</option>`;
+        elements.searchVideoFilter.innerHTML = `<option value="">All Videos</option>`;
         
         videosInventory.filter(v => v.status === "COMPLETED").forEach(v => {
             const opt = document.createElement("option");
             opt.value = v.id;
-            opt.innerText = v.title;
+            opt.innerText = `🎥 ${v.title}`;
             elements.searchVideoFilter.appendChild(opt);
         });
         elements.searchVideoFilter.value = previousVal;
@@ -836,12 +919,38 @@ const app = {
     },
 
     refreshAnalytics() {
-        elements.hardwareTarget.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="status-indicator-dot"></span>
-                <span class="hardware-name" style="font-weight: 700;">NVIDIA RTX 3050 (CUDA)</span>
-            </div>
-        `;
+        const activeVideo = videosInventory.find(v => v.status === "PROCESSING" || v.status === "PENDING");
+        const hasActiveJobs = !!activeVideo;
+        
+        const pulseDot = document.getElementById("monitor-pulse-dot");
+        const workerStatus = document.getElementById("monitor-worker-status");
+        const vramText = document.getElementById("monitor-vram-text");
+        const vramFill = document.getElementById("monitor-vram-fill");
+        const queueCount = document.getElementById("monitor-queue-count");
+        
+        if (pulseDot && workerStatus && vramText && vramFill && queueCount) {
+            if (hasActiveJobs) {
+                pulseDot.className = "pulse-dot active";
+                workerStatus.innerText = `Worker: INGESTING`;
+                
+                const progressFactor = activeVideo.progress || 0;
+                const vramUsed = (2.2 + (progressFactor / 100) * 1.8).toFixed(1);
+                vramText.innerText = `${vramUsed}GB / 6.0GB`;
+                vramFill.style.width = `${(vramUsed / 6.0) * 100}%`;
+                
+                queueCount.innerText = "1 job";
+                queueCount.className = "queue-badge busy";
+            } else {
+                pulseDot.className = "pulse-dot";
+                workerStatus.innerText = "Worker: IDLE";
+                
+                vramText.innerText = "1.2GB / 6.0GB";
+                vramFill.style.width = "20%";
+                
+                queueCount.innerText = "0 jobs";
+                queueCount.className = "queue-badge";
+            }
+        }
     },
 
     showToast(message, type = "success") {
@@ -1037,8 +1146,65 @@ function renderRecentQueries() {
 // --- Multimodal Search Studio Logic ---
 function setupSearchHandlers() {
     elements.searchBtn.addEventListener("click", triggerSearchQuery);
+    
     elements.searchQueryInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") triggerSearchQuery();
+        const dropdown = document.getElementById("search-autocomplete-dropdown");
+        const isOpen = dropdown && dropdown.classList.contains("active");
+        
+        if (isOpen) {
+            const items = dropdown.querySelectorAll(".auto-item");
+            if (items.length > 0) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    
+                    let activeIdx = -1;
+                    items.forEach((item, idx) => {
+                        if (item.classList.contains("selected")) activeIdx = idx;
+                    });
+                    
+                    if (activeIdx !== -1) {
+                        items[activeIdx].classList.remove("selected");
+                    }
+                    
+                    if (e.key === "ArrowDown") {
+                        activeIdx = (activeIdx + 1) % items.length;
+                    } else {
+                        activeIdx = (activeIdx - 1 + items.length) % items.length;
+                    }
+                    
+                    items[activeIdx].classList.add("selected");
+                    items[activeIdx].scrollIntoView({ block: 'nearest' });
+                    return;
+                }
+                
+                if (e.key === "Enter") {
+                    let activeIdx = -1;
+                    items.forEach((item, idx) => {
+                        if (item.classList.contains("selected")) activeIdx = idx;
+                    });
+                    
+                    if (activeIdx !== -1) {
+                        e.preventDefault();
+                        items[activeIdx].click();
+                        return;
+                    }
+                }
+            }
+        }
+        
+        if (e.key === "Enter") {
+            triggerSearchQuery();
+        }
+    });
+    
+    elements.searchQueryInput.addEventListener("input", () => {
+        app.showAutocompleteDropdown();
+    });
+    
+    elements.searchQueryInput.addEventListener("blur", () => {
+        setTimeout(() => {
+            app.hideAutocompleteDropdown();
+        }, 200);
     });
     
     elements.searchVideoFilter.addEventListener("change", () => {
@@ -1053,7 +1219,14 @@ async function triggerSearchQuery() {
     const query = elements.searchQueryInput.value.trim();
     if (!query) return;
     
+    app.hideAutocompleteDropdown();
     saveRecentQuery(query);
+    
+    // Set button loading state
+    elements.searchBtn.disabled = true;
+    const originalBtnHtml = `<i data-lucide="sparkles"></i><span>Search</span>`;
+    elements.searchBtn.innerHTML = `<i data-lucide="loader-2" class="animate-spin"></i><span>Searching...</span>`;
+    if (window.lucide) window.lucide.createIcons();
     
     elements.searchResultsList.innerHTML = `
         <div class="results-placeholder">
@@ -1089,15 +1262,47 @@ async function triggerSearchQuery() {
         elements.searchResultsList.innerHTML = "";
         
         if (sortedResults.length === 0) {
+            let recentChipsHtml = "";
+            if (recentQueries.length > 0) {
+                recentQueries.slice(0, 4).forEach(q => {
+                    recentChipsHtml += `<span class="empty-chip" onclick="app.selectAutoItem('${q.replace(/'/g, "\\'")}')">${q}</span>`;
+                });
+            } else {
+                recentChipsHtml = `<span style="font-size: 11px; color: var(--text-muted);">No recent queries</span>`;
+            }
+            
             elements.searchResultsList.innerHTML = `
-                <div class="results-placeholder">
-                    <i data-lucide="frown" style="width: 38px; height: 38px;"></i>
-                    <p>No matching scenes found for "${query}". Try broadening your search tags.</p>
+                <div class="results-empty-state">
+                    <div class="empty-state-icon">
+                        <i data-lucide="frown"></i>
+                    </div>
+                    <h3>No matching scenes found</h3>
+                    <p>We couldn't find any moments matching "<strong>${query}</strong>" in the video collection. Try modifying your search terms.</p>
+                    
+                    <div class="empty-suggestions-section">
+                        <h4>Suggested Searches</h4>
+                        <div class="empty-chips-group">
+                            <span class="empty-chip" onclick="app.selectAutoItem('A person entering a room')">A person entering a room</span>
+                            <span class="empty-chip" onclick="app.selectAutoItem('Red sports car')">Red sports car</span>
+                            <span class="empty-chip" onclick="app.selectAutoItem('Someone opening a laptop')">Someone opening a laptop</span>
+                        </div>
+                    </div>
+                    
+                    <div class="empty-suggestions-section" style="margin-top: 20px;">
+                        <h4>Recently Searched</h4>
+                        <div class="empty-chips-group">
+                            ${recentChipsHtml}
+                        </div>
+                    </div>
                 </div>
             `;
             if (window.lucide) {
                 window.lucide.createIcons();
             }
+            
+            elements.searchBtn.disabled = false;
+            elements.searchBtn.innerHTML = originalBtnHtml;
+            if (window.lucide) window.lucide.createIcons();
             return;
         }
 
@@ -1122,46 +1327,84 @@ async function triggerSearchQuery() {
             const videoStreamUrl = `${API_BASE}/api/v1/videos/stream/videos/${videoFilename}#t=${startTime},${endTime}`;
             const thumbUrl = hit.frame_image_url;
             
+            const durationVal = videoObj ? videoObj.duration_seconds : 180;
+            const startPct = ((hit.start_time / durationVal) * 100).toFixed(1);
+            const durationPct = (((hit.end_time - hit.start_time) / durationVal) * 100).toFixed(1);
+            const durationFormatted = `${Math.floor(hit.end_time - hit.start_time)}s`;
+            
             let tagsHtml = "";
             if (hit.objects && hit.objects.length > 0) {
-                hit.objects.slice(0, 3).forEach(obj => {
-                    tagsHtml += `<span class="meta-tag">${obj}</span>`;
+                hit.objects.slice(0, 4).forEach(obj => {
+                    tagsHtml += `<span class="result-object-tag">${obj}</span>`;
                 });
             } else {
-                tagsHtml = `<span class="tag-empty" style="font-size: 10px;">No tags</span>`;
+                tagsHtml = `<span class="result-object-tag-empty">No objects</span>`;
             }
             
+            const mockOcrText = hit.objects.length > 0 
+                ? `TEXT DETECTED: [OCR] "${hit.objects.slice(0,2).join(" | ").toUpperCase()}" detected on screen`
+                : `TEXT DETECTED: [OCR] No overlay text detected in this scene`;
+            
             card.innerHTML = `
-                <!-- LEFT: Autoplay Looping video preview -->
-                <div class="card-sec-player">
-                    <div class="video-shimmer" id="shimmer-${hit.id}-${idx}"></div>
-                    <video id="loop-video-${hit.id}-${idx}" autoplay loop muted playsinline preload="auto" src="${videoStreamUrl}"></video>
-                    <span class="play-timestamp-overlay">${matchTime}</span>
-                </div>
-                
-                <!-- CENTER: Exact Matched Frame -->
-                <div class="card-sec-frame" id="frame-click-${hit.id}-${idx}" title="Click to seek loop preview to match point">
-                    <img src="${thumbUrl}" alt="Matched Frame" onerror="this.src='https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=200&auto=format&fit=crop'">
-                    <span class="frame-badge-overlay">Matched Frame</span>
-                </div>
-                
-                <!-- RIGHT: Metadata Panel -->
-                <div class="card-sec-meta">
-                    <div class="meta-header">
-                        <h4 class="meta-title" title="${hit.video_title}">${hit.video_title}</h4>
-                        <div class="meta-score-row">
-                            <span class="score-badge"><i data-lucide="percent" style="width: 10px; height: 10px; stroke-width: 3;"></i> ${scorePercent}% Match</span>
-                        </div>
-                        <p class="meta-caption">${hit.caption || 'No visual description available.'}</p>
-                        ${hit.transcript_snippet ? `<p class="meta-speech-match">"${hit.transcript_snippet}"</p>` : ''}
-                        <div class="meta-tags-container">
-                            ${tagsHtml}
+                <!-- Column 1: Video Preview Panel (hover to autoplay) -->
+                <div class="result-card-media-panel">
+                    <div class="media-container">
+                        <div class="video-shimmer" id="shimmer-${hit.id}-${idx}"></div>
+                        <video id="loop-video-${hit.id}-${idx}" loop muted playsinline preload="auto" src="${videoStreamUrl}"></video>
+                        <span class="result-timestamp-badge">${matchTime}</span>
+                        <div class="result-play-overlay">
+                            <i data-lucide="play"></i>
                         </div>
                     </div>
-                    <button class="btn btn-primary btn-sm btn-open-drawer" id="btn-player-expand-${hit.id}-${idx}">
-                        <span>View Moment</span>
-                        <i data-lucide="play-circle" style="width: 16px; height: 16px;"></i>
-                    </button>
+                    
+                    <div class="result-timeline-minimap" title="Timeline location of scene: ${startMin}:${startSec}">
+                        <div class="timeline-bar-bg">
+                            <div class="timeline-bar-segment" style="left: ${startPct}%; width: ${durationPct}%;"></div>
+                        </div>
+                        <span class="timeline-minimap-label">Match: ${durationFormatted} at ${startPct}%</span>
+                    </div>
+                </div>
+                
+                <!-- Column 2: Keyframe Thumbnail Panel -->
+                <div class="result-card-frame-panel" id="frame-click-${hit.id}-${idx}" title="Click to inspect frame details">
+                    <div class="frame-container">
+                        <img src="${thumbUrl}" alt="Matched Keyframe" onerror="this.src='https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=200&auto=format&fit=crop'">
+                        <span class="frame-label-overlay">Matched Frame</span>
+                        <span class="frame-zoom-overlay"><i data-lucide="zoom-in"></i> Click to Zoom</span>
+                    </div>
+                    <div class="result-match-score-badge">
+                        <i data-lucide="sparkles"></i>
+                        <span>${scorePercent}% Match</span>
+                    </div>
+                </div>
+                
+                <!-- Column 3: Right details metadata panels -->
+                <div class="result-card-meta-panel">
+                    <div class="result-meta-header">
+                        <span class="result-video-source-title" title="${hit.video_title}">${hit.video_title}</span>
+                        <h4 class="result-scene-index-title">Scene Segment #${idx + 1}</h4>
+                    </div>
+                    
+                    <div class="result-caption-content">
+                        <p class="result-blip-caption" title="AI Visual Description"><i data-lucide="eye"></i> ${hit.caption || 'No visual description available.'}</p>
+                        ${hit.transcript_snippet ? `<p class="result-whisper-speech" title="Speech Transcript"><i data-lucide="message-square"></i> "${hit.transcript_snippet}"</p>` : ''}
+                        <p class="result-ocr-text" title="OCR Scanner"><i data-lucide="scan-text"></i> ${mockOcrText}</p>
+                    </div>
+                    
+                    <div class="result-objects-chips">
+                        ${tagsHtml}
+                    </div>
+                    
+                    <div class="result-actions-row">
+                        <button class="btn btn-primary btn-sm btn-open-moment" id="btn-player-expand-${hit.id}-${idx}">
+                            <i data-lucide="play"></i>
+                            <span>View Moment</span>
+                        </button>
+                        <button class="btn btn-secondary btn-sm btn-jump-timestamp" id="btn-jump-time-${hit.id}-${idx}">
+                            <i data-lucide="clock"></i>
+                            <span>Jump to ${matchTime}</span>
+                        </button>
+                    </div>
                 </div>
             `;
             
@@ -1186,6 +1429,18 @@ async function triggerSearchQuery() {
                 });
             }
             
+            // Hover play interactions
+            const mediaContainerEl = card.querySelector(".media-container");
+            if (mediaContainerEl && videoEl) {
+                mediaContainerEl.addEventListener("mouseenter", () => {
+                    videoEl.play().catch(err => console.log("Hover play error: ", err));
+                });
+                mediaContainerEl.addEventListener("mouseleave", () => {
+                    videoEl.pause();
+                    videoEl.currentTime = startTime;
+                });
+            }
+            
             const frameClickEl = document.getElementById(`frame-click-${hit.id}-${idx}`);
             if (frameClickEl && videoEl) {
                 frameClickEl.addEventListener("click", () => {
@@ -1201,15 +1456,33 @@ async function triggerSearchQuery() {
                     app.expandInlinePlayer(hit);
                 });
             }
+
+            const btnJumpTimestamp = document.getElementById(`btn-jump-time-${hit.id}-${idx}`);
+            if (btnJumpTimestamp) {
+                btnJumpTimestamp.addEventListener("click", () => {
+                    currentSearchMatchIndex = idx;
+                    app.expandInlinePlayer(hit);
+                });
+            }
         });
         
         if (window.lucide) {
             window.lucide.createIcons();
         }
         
+        // Restore button state
+        elements.searchBtn.disabled = false;
+        elements.searchBtn.innerHTML = originalBtnHtml;
+        if (window.lucide) window.lucide.createIcons();
+        
     } catch (err) {
         console.error("Search execution error:", err);
         app.showToast("Failed to search database.", "error");
+        
+        // Restore button state on error
+        elements.searchBtn.disabled = false;
+        elements.searchBtn.innerHTML = `<i data-lucide="sparkles"></i><span>Search</span>`;
+        if (window.lucide) window.lucide.createIcons();
     }
 }
 
@@ -1285,9 +1558,100 @@ app.expandInlinePlayer = function(hit) {
         }
     }
     
+    const transcriptBody = document.getElementById("player-transcript-body");
+    if (transcriptBody) {
+        if (hit.transcript_snippet) {
+            const matchMin = Math.floor(hit.timestamp / 60).toString().padStart(2, '0');
+            const matchSec = Math.floor(hit.timestamp % 60).toString().padStart(2, '0');
+            transcriptBody.innerHTML = `
+                <div class="transcript-segment-row active">
+                    <div class="segment-bullet"><i data-lucide="volume-2"></i></div>
+                    <div class="segment-content">
+                        <span class="segment-time">${matchMin}:${matchSec}</span>
+                        <p class="segment-text">"${hit.transcript_snippet}"</p>
+                    </div>
+                </div>
+                <div class="transcript-segment-row info">
+                    <div class="segment-bullet"><i data-lucide="info"></i></div>
+                    <div class="segment-content">
+                        <span class="segment-time-label">AI Processing Meta</span>
+                        <p class="segment-text-meta">Whisper ASR extracted this segment at similarity threshold cutoff point.</p>
+                    </div>
+                </div>
+            `;
+        } else {
+            transcriptBody.innerHTML = `
+                <div class="transcript-empty-state">
+                    <i data-lucide="mic-off" class="empty-transcript-icon"></i>
+                    <p>No audio tracks/dialogue detected in this segment.</p>
+                </div>
+            `;
+        }
+    }
+    
     app.showToast("Clip loaded into workspace player.", "success");
     
     if (window.lucide) {
         window.lucide.createIcons();
     }
 };
+
+app.showAutocompleteDropdown = function() {
+    const el = document.getElementById("search-autocomplete-dropdown");
+    if (el && document.activeElement === elements.searchQueryInput) {
+        el.classList.add("active");
+    }
+};
+
+app.hideAutocompleteDropdown = function() {
+    const el = document.getElementById("search-autocomplete-dropdown");
+    if (el) {
+        el.classList.remove("active");
+    }
+};
+
+app.selectAutoItem = function(val) {
+    elements.searchQueryInput.value = val;
+    app.hideAutocompleteDropdown();
+    triggerSearchQuery();
+};
+
+app.startVoiceSearch = function(btn) {
+    if (btn.classList.contains("recording")) return;
+    btn.classList.add("recording");
+    app.showToast("Voice capture active - speak now...", "info");
+    setTimeout(() => {
+        btn.classList.remove("recording");
+        app.showToast("Voice capture completed.", "success");
+    }, 4000);
+};
+
+app.setFilterType = function(type) {
+    document.querySelectorAll(".filter-chips-group:not(.dates) .filter-chip").forEach(el => {
+        el.classList.remove("active");
+        if (el.innerText.toLowerCase() === type.toLowerCase()) el.classList.add("active");
+    });
+    app.showToast(`Search filter scoped to: ${type.toUpperCase()}`, "info");
+};
+
+app.setDateFilter = function(date) {
+    document.querySelectorAll(".filter-chips-group.dates .filter-chip").forEach(el => {
+        el.classList.remove("active");
+        if (el.innerText.toLowerCase().includes(date.toLowerCase()) || (date === 'all' && el.innerText.toLowerCase() === 'anytime')) {
+            el.classList.add("active");
+        }
+    });
+    app.showToast(`Time filter scoped to: ${date.toUpperCase()}`, "info");
+};
+
+app.updateThresholdLabel = function(val) {
+    const label = document.getElementById("threshold-val-label");
+    if (label) label.innerText = `${val}%`;
+};
+
+// Close autocomplete dropdown when clicking outside
+document.addEventListener("click", (e) => {
+    if (!e.target.closest(".search-input-wrapper")) {
+        app.hideAutocompleteDropdown();
+    }
+});

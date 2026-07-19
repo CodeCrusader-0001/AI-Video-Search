@@ -1,0 +1,204 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------
+  # 🌐 REVERSE PROXY & GATEWAY
+  # -------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: aura-nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - fastapi-gateway
+    networks:
+      - aura-production-network
+    restart: always
+
+  fastapi-gateway:
+    build:
+      context: ../
+      dockerfile: ./backend/Dockerfile
+    container_name: aura-api-gateway
+    environment:
+      - DATABASE_URL=postgresql://postgres:aura_secure_password@postgres-db:5432/aura_db
+      - QDRANT_URL=http://qdrant-vector-db:6333
+      - CELERY_BROKER_URL=redis://redis-queue:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-queue:6379/0
+      - S3_ENDPOINT_URL=http://minio-s3:9000
+      - S3_ACCESS_KEY=minio_admin_user
+      - S3_SECRET_KEY=minio_admin_password
+      - SECRET_KEY=production_secret_key_rotation_jwt_secure
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres-db
+      - qdrant-vector-db
+      - redis-queue
+    networks:
+      - aura-production-network
+    restart: always
+
+  # -------------------------------------------------------------
+  # ⚙️ DISTRIBUTED PROCESSING QUEUE & PARALLEL CUDA WORKERS
+  # -------------------------------------------------------------
+  redis-queue:
+    image: redis:7-alpine
+    container_name: aura-redis-broker
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis-data:/data
+    networks:
+      - aura-production-network
+    restart: always
+
+  # Worker 0 pinned to GPU 0
+  celery-worker-gpu-0:
+    build:
+      context: ../
+      dockerfile: ./worker/Dockerfile
+    container_name: aura-worker-cuda-0
+    environment:
+      - DATABASE_URL=postgresql://postgres:aura_secure_password@postgres-db:5432/aura_db
+      - QDRANT_URL=http://qdrant-vector-db:6333
+      - CELERY_BROKER_URL=redis://redis-queue:6379/0
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - redis-queue
+      - postgres-db
+      - qdrant-vector-db
+    networks:
+      - aura-production-network
+    restart: always
+
+  # Worker 1 pinned to GPU 1 (Simulated parallel compute)
+  celery-worker-gpu-1:
+    build:
+      context: ../
+      dockerfile: ./worker/Dockerfile
+    container_name: aura-worker-cuda-1
+    environment:
+      - DATABASE_URL=postgresql://postgres:aura_secure_password@postgres-db:5432/aura_db
+      - QDRANT_URL=http://qdrant-vector-db:6333
+      - CELERY_BROKER_URL=redis://redis-queue:6379/0
+      - CUDA_VISIBLE_DEVICES=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - redis-queue
+      - postgres-db
+      - qdrant-vector-db
+    networks:
+      - aura-production-network
+    restart: always
+
+  # -------------------------------------------------------------
+  # 💾 STORAGE & DATABASES
+  # -------------------------------------------------------------
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: aura-postgres-relational
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=aura_secure_password
+      - POSTGRES_DB=aura_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - aura-production-network
+    restart: always
+
+  qdrant-vector-db:
+    image: qdrant/qdrant:latest
+    container_name: aura-qdrant-vectors
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - aura-production-network
+    restart: always
+
+  minio-s3:
+    image: minio/minio:latest
+    container_name: aura-minio-s3
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minio_admin_user
+      - MINIO_ROOT_PASSWORD=minio_admin_password
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - aura-production-network
+    restart: always
+
+  # -------------------------------------------------------------
+  # 📊 TELEMETRY & MONITORING
+  # -------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aura-prometheus-scraped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - aura-production-network
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aura-grafana-dashboards
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=grafana_secure_dashboard
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - aura-production-network
+    restart: always
+
+# -------------------------------------------------------------
+# 🔗 NETWORKS & VOLUMES
+# -------------------------------------------------------------
+networks:
+  aura-production-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
+  qdrant-data:
+    driver: local
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+  grafana-data:
+    driver: local
