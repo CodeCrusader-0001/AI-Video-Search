@@ -1,6 +1,12 @@
 # AURA — Production-Grade Multimodal AI Video Search Engine
 
-AURA is a high-throughput, enterprise-ready AI Video Search Engine designed for indexing, searching, and analyzing large-scale video repositories. It enables users to upload video catalogs, automatically segment visual scenes, generate rich textual captions, recognize spoken keywords, detect object boundaries, extract frame text, and execute hybrid semantic queries.
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Status](https://img.shields.io/badge/status-active--development-yellow)
+
+AURA is a high-throughput, enterprise-ready AI Video Search Engine designed for indexing, searching, and analyzing large-scale video repositories. It enables users to upload video catalogs, automatically segment visual scenes, generate rich textual captions, recognize spoken keywords, and detect object boundaries — then execute hybrid semantic queries across all of it.
+
+> **Note:** Frame-level OCR (on-screen text extraction) is a planned extension and is currently mocked in the UI — see [Model Specifications](#1-model-specifications) below. All other pipelines (scene detection, transcription, captioning, object detection, vector search) are fully implemented.
 
 The architecture is built for multi-GPU scalability, separating synchronous HTTP API requests from asynchronous PyTorch inference jobs using a Redis-backed Celery task queue, with a zero-friction fallback to FastAPI local background threads for development.
 
@@ -15,37 +21,49 @@ AURA supports two modes of execution depending on the environment:
 ```mermaid
 graph TD
     %% Client & Gateway
-    User[Client SPA Dashboard] -->|HTTP / Websockets| Nginx[Nginx Reverse Proxy]
-    Nginx -->|Route Request| FastAPI[FastAPI Gateway]
-    
-    %% Ingest Pipelines (Local vs. Prod)
-    subgraph local_ingest ["FastAPI In-Process Ingestion (Local Mode)"]
-        FastAPI -->|BackgroundTasks thread| LocalWorker[Local Processing Pipeline]
+    User[Client SPA Dashboard] -->|HTTP / WebSocket| Nginx[Nginx Reverse Proxy]
+    Nginx --> FastAPI[FastAPI Gateway]
+
+    %% Dispatch: Local vs Production
+    FastAPI -->|"Local: BackgroundTasks thread"| LocalWorker[Local Processing Pipeline]
+    FastAPI -->|"Prod: dispatch task"| Redis[(Redis Broker Queue)]
+    Redis --> Celery_0["Celery Worker 0 (GPU 0)"]
+    Redis --> Celery_1["Celery Worker 1 (GPU 1)"]
+
+    %% Converge all three execution paths into one logical pipeline
+    LocalWorker --> Pipeline{{Ingestion Pipeline}}
+    Celery_0 --> Pipeline
+    Celery_1 --> Pipeline
+
+    %% Deep Learning Model Stages
+    subgraph models [Deep Learning Model Stages]
+        direction LR
+        PyScene[PySceneDetect<br/>Scene Cuts]
+        Whisper[Whisper-Small<br/>Speech-to-Text]
+        SigLIP[SigLIP<br/>Frame Encoder]
+        YOLO[YOLOv8<br/>Object Detector]
+        BLIP[BLIP<br/>Captioning]
+        OCR[["PaddleOCR / EasyOCR<br/>(Planned)"]]
     end
-    
-    subgraph celery_ingest ["Celery Queue Ingestion (Production Mode)"]
-        FastAPI -->|Dispatch Ingestion Task| Redis[Redis Broker Queue]
-        
-        subgraph cuda_compute ["Parallel CUDA Compute"]
-            Redis -->|Dispatch Job 0| Celery_0["Celery Worker 0 (GPU 0)"]
-            Redis -->|Dispatch Job 1| Celery_1["Celery Worker 1 (GPU 1)"]
-        end
+
+    Pipeline --> PyScene
+    Pipeline --> Whisper
+    Pipeline --> SigLIP
+    Pipeline --> YOLO
+    Pipeline --> BLIP
+    Pipeline -.->|not yet wired| OCR
+
+    %% Storage & Vector Index
+    subgraph storage [Storage & Metadata]
+        direction LR
+        DB[("PostgreSQL / SQLite")]
+        OS[("S3 / MinIO / Local Disk")]
+        Qdrant[("Qdrant Vector DB")]
     end
-    
-    %% Storage & Metadata (Shared Targets)
-    LocalWorker & Celery_0 & Celery_1 -->|Relational Data SQL| DB[("PostgreSQL / SQLite")]
-    LocalWorker & Celery_0 & Celery_1 -->|Media File Uploads| OS[("AWS S3 / MinIO / Local Disk")]
-    
-    %% Deep Learning Workers Pipeline
-    LocalWorker & Celery_0 & Celery_1 -->|HSV Frame Cuts| PyScene[PySceneDetect ContentDetector]
-    LocalWorker & Celery_0 & Celery_1 -->|ASR Speech segments| Whisper[Whisper-Small Speech-to-Text]
-    LocalWorker & Celery_0 & Celery_1 -->|Visual Embeddings| SigLIP[SigLIP Frame Encoder]
-    LocalWorker & Celery_0 & Celery_1 -->|Visual Detections| YOLO[YOLOv8 Object Detector]
-    LocalWorker & Celery_0 & Celery_1 -->|Auto Captioning| BLIP[BLIP-Image-Captioning-Base]
-    LocalWorker & Celery_0 & Celery_1 -->|Mock Frame Text| OCR["PaddleOCR / EasyOCR - Planned Extension"]
-    
-    %% Vector Indexing
-    SigLIP -->|768-dim Visual Vectors| Qdrant[("Qdrant Vector DB")]
+
+    Pipeline --> DB
+    Pipeline --> OS
+    SigLIP -->|768-dim vectors| Qdrant
 ```
 
 ---
@@ -78,9 +96,9 @@ AURA uses a custom hybrid retrieval pipeline that blends semantic visual vector 
     *   **Speech transcripts**: Matching words in `transcript_segments` add a boost of `0.2` to the text score of all frames within the matching scene.
     *   **Object detection labels**: Matching labels in `detected_objects` add a boost of `0.3 * YOLO_confidence` to the matching frame's text score.
 4.  **Blended Score Combination**: The system combines the scores using a weighted formula:
-    
+
     $$\text{Blended Score} = 0.7 \times \text{Vector Score} + 0.3 \times \text{Text Score}$$
-    
+
 5.  **Hydration**: The top results are hydrated with video titles, scene timestamps, captions, object lists, and temporary secure file URLs before being returned to the UI.
 
 ---
@@ -95,7 +113,7 @@ AURA integrates modern backend microservices with deep learning models running o
 *   **Speech Recognition (OpenAI Whisper)**: Transcribes raw audio tracks (demuxed to 16kHz WAV via FFmpeg) into time-aligned text fragments using `openai/whisper-small`.
 *   **Object Categorization (YOLOv8)**: Detects visual objects (e.g. people, cars, laptops) in keyframes using `yolov8n.pt`, populating target entity chips.
 *   **Frame Description (BLIP)**: Image-to-text conditional transformer (`Salesforce/blip-image-captioning-base`) that generates detailed natural scene descriptions and visual captions.
-*   **Optical Character Recognition (OCR)**: Scans frame areas and indexes text, planned as a future backend extension (currently mocked in the UI).
+*   **Optical Character Recognition (OCR)**: Scans frame areas and indexes on-screen text — **planned backend extension, currently mocked in the UI only.** No live inference runs yet.
 
 ### 2. Infrastructure
 *   **Nginx**: Reverse proxy handling load balancing, static assets, and SSL termination.
@@ -103,19 +121,6 @@ AURA integrates modern backend microservices with deep learning models running o
 *   **Celery & Redis**: Message broker and distributed worker queue managing asynchronous tasks.
 *   **PostgreSQL / SQLite**: High-concurrency SQL database storing users, metadata, object tags, and search logs.
 *   **Qdrant Vector DB**: Scalable vector database executing high-speed Cosine Similarity indexes over the 768-dimensional SigLIP frame embeddings.
-
----
-
-## ⚡ NVIDIA CUDA GPU Acceleration
-
-AURA detects and utilizes integrated NVIDIA GPUs to accelerate PyTorch model inferences:
-
-| Model Pipeline Stage | CPU Processing Time (5 min Video) | GPU CUDA Processing Time (5 min Video) | Speedup Multiplier |
-| :--- | :--- | :--- | :--- |
-| SigLIP Frame Encoding | ~180 seconds | ~14 seconds | **12.8x** |
-| Whisper Transcription | ~72 seconds | ~8 seconds | **9.0x** |
-| YOLOv8 Classification | ~38 seconds | ~3 seconds | **12.6x** |
-| **Total Ingestion Execution** | **~290 seconds** | **~25 seconds** | **11.6x** |
 
 ---
 
@@ -196,8 +201,40 @@ AI-Video-Search/
 │   ├── index.html                # Custom HTML5 structure with top-navigation
 │   ├── style.css                 # Premium glassmorphic design stylesheet
 │   └── app.js                    # Autoplay loops, hotkey listeners, upload states
+├── .env.example                  # Template for required environment variables
 └── README.md
 ```
+
+---
+
+## ✅ Prerequisites
+
+Before running AURA locally or in production, make sure the following are installed:
+
+| Requirement | Local Dev Mode | Production Mode |
+| :--- | :--- | :--- |
+| Python 3.10+ | Required | Required |
+| FFmpeg (audio demuxing for Whisper) | Required | Required |
+| CUDA Toolkit + compatible NVIDIA driver | Optional (CPU fallback works) | Recommended for throughput |
+| Docker & Docker Compose | Not required | Required |
+| Redis | Not required (uses in-process `BackgroundTasks`) | Required (Celery broker) |
+| PostgreSQL | Not required (uses SQLite) | Required |
+
+---
+
+## ⚙️ Environment Variables
+
+Copy `.env.example` to `.env` and configure before starting either mode:
+
+| Variable | Description | Required In |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | SQLite path (local) or PostgreSQL DSN (prod) | Both |
+| `QDRANT_HOST` / `QDRANT_PORT` | Vector DB connection (defaults to in-memory locally) | Both |
+| `REDIS_URL` | Celery broker connection string | Production |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | S3/MinIO credentials for media storage | Production |
+| `S3_BUCKET_NAME` | Target bucket for uploaded video assets | Production |
+| `JWT_SECRET_KEY` | Signing secret for access/refresh tokens | Both |
+| `CUDA_VISIBLE_DEVICES` | GPU index assignment per Celery worker | Production (multi-GPU) |
 
 ---
 
@@ -209,17 +246,22 @@ AURA features a **Local Resilience Mode** that uses SQLite as the relational sto
 
 1.  **Clone the Repository** and navigate to the project directory:
     ```bash
-    cd "c:/Users/ashis/Music/Desktop/AI Video Search"
+    git clone https://github.com/<your-org>/AI-Video-Search.git
+    cd AI-Video-Search
     ```
 2.  **Install Python Dependencies**:
     ```bash
     pip install -r backend/requirements.txt -r worker/requirements.txt
     ```
-3.  **Execute Setup & Bootstrap the Gateway**:
+3.  **Configure environment variables**:
+    ```bash
+    cp .env.example .env
+    ```
+4.  **Execute Setup & Bootstrap the Gateway**:
     ```bash
     python run.py
     ```
-4.  **Access the Client Dashboard**:
+5.  **Access the Client Dashboard**:
     Open your browser and navigate to: `http://localhost:8000/`
 
 ### Production Deployment Mode (Distributed Multi-GPU Scale)
@@ -234,9 +276,30 @@ All system containers will initialize in the background. Access metrics through 
 
 ---
 
+## 🧪 Running Tests
+
+AURA's test suite auto-detects the `TESTING` environment variable and switches Qdrant to `location=":memory:"` for full isolation (see Troubleshooting below), so tests can run safely alongside a live dev server.
+
+```bash
+export TESTING=1          # Windows (PowerShell): $env:TESTING="1"
+pytest backend/tests worker/tests -v
+```
+
+---
+
 ## ⚠️ Troubleshooting & Locking Warnings
 
 ### Qdrant SQLite Lock Conflicts
-When running the development server and test runner concurrently on a single machine, Qdrant's local persistent database client can conflict over the local folder file lock (`storage/qdrant_db`), throwing a `RuntimeError: Storage folder is already accessed by another instance`. 
+When running the development server and test runner concurrently on a single machine, Qdrant's local persistent database client can conflict over the local folder file lock (`storage/qdrant_db`), throwing a `RuntimeError: Storage folder is already accessed by another instance`.
 
 **Solution**: The AURA test runner includes an automated bypass: if pytest or the `TESTING` environment variable is detected, it switches from a local folder path to a pure `location=":memory:"` database. This ensures complete test isolation and allows tests to run alongside a live development server.
+
+---
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome. Please open an issue describing the change before submitting a PR for anything beyond a small fix.
+
+## 📄 License
+
+Released under the MIT License. See `LICENSE` for details.
